@@ -23,7 +23,7 @@ const TOKEN = "2402702:zd4IGiVAOpeRvFEnbqWlTmftHwSgausD";
 // ===============================
 // 🔥 HUB CONFIG (FIX NON BLOCKING)
 // ===============================
-const HUB_URL = "https://server.elianainteractive.com/api/notify";
+const HUB_URL = "https://serverws-production-2b86.up.railway.app/api/notify";
 const HUB_TOKEN = "EI115256152";
 
 function sendToHub(d) {
