@@ -6,11 +6,16 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.16.0",
-    "socket.io": "^4.7.2",
-    "cors": "^2.8.5",
+    "axios": "^1.18.1",
     "body-parser": "^1.20.2",
-    "mysql2": "^3.10.0"
+    "chalk": "^5.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "mysql2": "^3.10.0",
+    "node-upload-images": "^1.0.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.7.2",
+    "ws": "^8.16.0"
   }
 }

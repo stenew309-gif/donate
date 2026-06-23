@@ -6,6 +6,47 @@ const cors = require("cors");
 
 const fs = require("fs");
 const path = require("path");
+require("dotenv").config();
+
+const ENV_FILE = path.join(__dirname, ".env");
+
+let ORDERKUOTA_USERNAME =
+  process.env.ORDERKUOTA_USERNAME || "";
+
+let ORDERKUOTA_TOKEN =
+  process.env.ORDERKUOTA_TOKEN || "";
+
+function saveOrderKuotaConfig(username, token) {
+
+  let env = "";
+
+  if (fs.existsSync(ENV_FILE)) {
+    env = fs.readFileSync(ENV_FILE, "utf8");
+  }
+
+  if (/^ORDERKUOTA_USERNAME=.*/m.test(env)) {
+    env = env.replace(
+      /^ORDERKUOTA_USERNAME=.*/m,
+      `ORDERKUOTA_USERNAME=${username}`
+    );
+  } else {
+    env += `\nORDERKUOTA_USERNAME=${username}`;
+  }
+
+  if (/^ORDERKUOTA_TOKEN=.*/m.test(env)) {
+    env = env.replace(
+      /^ORDERKUOTA_TOKEN=.*/m,
+      `ORDERKUOTA_TOKEN=${token}`
+    );
+  } else {
+    env += `\nORDERKUOTA_TOKEN=${token}`;
+  }
+
+  fs.writeFileSync(ENV_FILE, env);
+
+  ORDERKUOTA_USERNAME = username;
+  ORDERKUOTA_TOKEN = token;
+}
 const DB_FILE = path.join(__dirname, "donations.json");
 
 const app = express();
@@ -16,14 +57,16 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-const API_KEY = "ugaliuwt87t8wq98ysg98ay";
-const USERNAME = "elianacharostore";
-const TOKEN = "2402702:zd4IGiVAOpeRvFEnbqWlTmftHwSgausD";
+const {
+  OrderKuota,
+  createQRIS: createDynamicQRIS
+} = require("./lib/orderkuota-client");
+
 
 // ===============================
 // 🔥 HUB CONFIG (FIX NON BLOCKING)
 // ===============================
-const HUB_URL = "https://serverws-production-2b86.up.railway.app/api/notify";
+const HUB_URL = "https://server.elianainteractive.com/api/notify";
 const HUB_TOKEN = "EI115256152";
 
 function sendToHub(d) {
@@ -98,21 +141,59 @@ function generateUniqueAmount(base) {
 /* ========================= */
 
 async function createQRIS(amount) {
-  const url = `https://restapieliana.xyz/orderkuota/createpayment?apikey=${API_KEY}&username=${USERNAME}&token=${encodeURIComponent(TOKEN)}&amount=${amount}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  const data = json.result?.[0] || json.result;
-  return { image: data?.imageqris?.url || "" };
+
+  const ok =
+  new OrderKuota(
+    ORDERKUOTA_USERNAME,
+    ORDERKUOTA_TOKEN
+  );
+
+  const qrisData =
+    await ok.generateQr(amount);
+
+  if (!qrisData?.qris_data) {
+    throw new Error(
+      "QRIS generation failed"
+    );
+  }
+
+  const result =
+    await createDynamicQRIS(
+      amount,
+      qrisData.qris_data
+    );
+
+  return {
+    image:
+      result.imageqris.url
+  };
 }
 
 async function getMutasi() {
+
   try {
-    const url = `https://restapieliana.xyz/orderkuota/mutasiqr?apikey=${API_KEY}&username=${USERNAME}&token=${encodeURIComponent(TOKEN)}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    return json.result || [];
-  } catch {
-    console.log("❌ error mutasi");
+
+    const ok =
+  new OrderKuota(
+    ORDERKUOTA_USERNAME,
+    ORDERKUOTA_TOKEN
+  );
+
+    const result =
+      await ok.getTransactionQris();
+
+    return (
+      result?.qris_history?.results ||
+      []
+    );
+
+  } catch (err) {
+
+    console.log(
+      "❌ error mutasi:",
+      err.message
+    );
+
     return [];
   }
 }
@@ -433,4 +514,189 @@ app.get("/leaderboard", (req, res) => {
     .slice(0,10);
 
   res.json(leaderboard);
+});
+
+app.get("/orderkuota/getotp", async (req, res) => {
+
+  const { username, password } = req.query;
+
+  try {
+
+    const ok = new OrderKuota();
+
+    const result =
+      await ok.loginRequest(
+        username,
+        password
+      );
+
+    res.json(result);
+
+  } catch (err) {
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+
+  }
+
+});
+
+app.get("/orderkuota/gettoken", async (req, res) => {
+
+  const { username, otp } = req.query;
+
+  try {
+
+    const ok = new OrderKuota();
+
+    const result =
+      await ok.getAuthToken(
+        username,
+        otp
+      );
+
+    res.json(result);
+
+  } catch (err) {
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+
+  }
+
+});
+
+
+
+app.post("/orderkuota/save-token", (req, res) => {
+
+  const { username, token } = req.body;
+
+  if (!username || !token) {
+    return res.status(400).json({
+      success: false,
+      message: "username/token kosong"
+    });
+  }
+
+  saveOrderKuotaConfig(
+    username,
+    token
+  );
+
+  res.json({
+    success: true,
+    username,
+    token,
+    message: "Username & Token tersimpan ke .env"
+  });
+
+});
+
+app.get("/orderkuota/config", (req, res) => {
+
+  res.json({
+    username: ORDERKUOTA_USERNAME,
+    token: ORDERKUOTA_TOKEN
+      ? "********"
+      : ""
+  });
+
+});
+
+app.get("/orderkuota/profile", async (req, res) => {
+
+  try {
+
+    const ok = new OrderKuota(
+      ORDERKUOTA_USERNAME,
+      ORDERKUOTA_TOKEN
+    );
+
+    const result =
+      await ok.getTransactionQris();
+
+    res.json(result);
+
+  } catch(err) {
+
+    res.status(500).json({
+      error: err.message
+    });
+
+  }
+
+});
+
+app.get("/orderkuota/mutasi", async (req, res) => {
+
+  try {
+
+    const ok = new OrderKuota(
+      ORDERKUOTA_USERNAME,
+      ORDERKUOTA_TOKEN
+    );
+
+    const result =
+      await ok.getTransactionQris();
+
+    res.json(
+      result.qris_history?.results || []
+    );
+
+  } catch(err) {
+
+    res.status(500).json({
+      error: err.message
+    });
+
+  }
+
+});
+
+app.post("/orderkuota/createpayment", async (req, res) => {
+
+  try {
+
+    const { amount } = req.body;
+
+    const ok = new OrderKuota(
+      ORDERKUOTA_USERNAME,
+      ORDERKUOTA_TOKEN
+    );
+
+    const qrData =
+      await ok.generateQr(amount);
+
+    if (!qrData?.qris_data) {
+      return res.status(400).json({
+        success: false,
+        message: "QRIS gagal dibuat"
+      });
+    }
+
+    const result =
+      await createDynamicQRIS(
+        amount,
+        qrData.qris_data
+      );
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+
+  }
+
 });
